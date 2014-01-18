@@ -1,10 +1,9 @@
 # sql
 
-A Clojure library designed to ... well, that part is up to you.
+A simple lib for woring with sql.
 
 ## Usage
 
-FIXME
 
 ## License
 

@@ -1,8 +1,14 @@
 # sql
 
-A simple lib for woring with sql.
+A simple lib for working with sql.
+
+The base element is a query which is composable.
+
+Queries can support transformations. Sending multiple queries to a database is supported dependent on the specific db.
 
 ## Usage
+
+I plan to write up some notes at some point, with some examples.
 
 
 ## License

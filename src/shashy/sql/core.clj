@@ -1,7 +1,6 @@
 (ns shashy.sql.core
   (:refer-clojure :exclude (group-by set))
-  (:require [clojure.core.async :as async :refer (chan sliding-buffer put!)]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [clojure.walk :as walk]
             [clojure.java.jdbc :as jdbc]
             [clojure.java.jdbc.deprecated :as jdbc-deprecated]
@@ -9,28 +8,6 @@
   (:import [java.sql Connection PreparedStatement ResultSet Timestamp]))
 
 ;;TODO inserts not showing logged
-
-;; Default Connection -----------------------------------------------------------
-(def ^:private default-connection (atom nil))
-
-(defn set-default-connection!
-  [connection]
-  (reset! default-connection connection))
-
-(defn get-default-connection
-  []
-  @default-connection)
-
-;; Default Logging Channnel -----------------------------------------------------
-(def ^:private log-channel (atom (chan (sliding-buffer 50))))
-
-(defn set-log-channel
-  [channel]
-  (reset! log-channel channel))
-
-(defn get-log-channel
-  []
-  @log-channel)
 
 ;; --- To Sql Protocol ---------------------------------------------------------
 (defprotocol I->Sql
@@ -94,6 +71,7 @@
          (map (fn [[k v]] {(col->key k v) (from-sql v)})
               sql-map)))
 
+;TODO works this out
 (def ^:private default-transforms (atom [sqlmap->cljmap]))
 
 (defn set-default-transforms!
@@ -153,10 +131,12 @@
   (update-in query [key] concat (flatten (list vals))))
 
 (defn connection
+  "Add a connection to a query to be used in executing the query"
   [q c]
   (assoc q :connection c))
 
 (defn limit
+  "Impose a limit on the number of rows returned by a query"
   [q l]
   (assoc q :limit l))
 
@@ -175,6 +155,7 @@
 
 (defmacro fields
   [query field-names]
+  "Assoc a field name or seq of field names to a query"
   `(->> (if (= clojure.lang.Symbol (class '~field-names)) ~field-names
                                                           '~field-names)
           (map (fn [field#]
@@ -427,7 +408,7 @@
 (defn- get-results
   [^PreparedStatement stmt sqls parameters queries]
   (let [[_ ms] (dates/ms-taken (.execute stmt))
-        _ (put! @log-channel {:type "query" :ms ms :sql sqls :parameters parameters})]
+        #_(put! @log-channel {:type "query" :ms ms :sql sqls :parameters parameters})]
     (->> queries
          (map (fn [{transforms :transforms}]
                 (let [results (with-open [^ResultSet rs (.getResultSet stmt)]
@@ -473,8 +454,7 @@
   "Execute a query"
   [{:keys [connection table] :as query}]
   (->> query
-       (multi-query (or connection @default-connection)
-                 table)
+       (multi-query connection table)
        (table)))
 
 (defn- exec1-query
@@ -483,6 +463,7 @@
   (first (exec-query (assoc query :limit 1))))
 
 (defn find-by-id
+  "Shorthand find given the table id field (default :id if not supplied) and the id value"
   ([table id-field id-value]
    (-> (query table)
        (where {id-field id-value})
@@ -501,61 +482,61 @@
 
 ; prepare a clojure map for persisting to a rdbms
 ; keywords become strings, data types are converted
-(defn cljmap->sqlmap
-  [clj-map]
-  (apply merge
-         (map (fn [[k v]] {(key->col k) (->sql v)})
-              clj-map)))
+((defn cljmap->sqlmap
+   [clj-map]
+   (apply merge
+          (map (fn [[k v]] {(key->col k) (->sql v)})
+               clj-map)))
 
-(defn- persist-map
-  [{id :id :as record} table]
-  (let [db-record (cljmap->sqlmap record)
-        [ret ms] (dates/ms-taken
+ ;; Commented out because inserts do not need to be handled in this library
+(comment 
+ (defn- persist-map
+   [{id :id :as record} table]
+   (let [db-record (cljmap->sqlmap record)
+         [ret ms] (dates/ms-taken
                    (jdbc-deprecated/update-or-insert-values table ["id=?" id] db-record))
-        _ (put! @log-channel {:type "insert-or-update" :ms ms :parameters db-record :table table})]
-    (or id (:generated_key ret))))
+         #_(put! @log-channel {:type "insert-or-update" :ms ms :parameters db-record :table table})]
+     (or id (:generated_key ret))))
 
 
-(defn save-record
-  "Persist a clojure map to the database. Uses insert if the :id cannot be matched,
+ (defn save-record
+   "Persist a clojure map to the database. Uses insert if the :id cannot be matched,
   otherwise uses update. Will return the updated map."
-  [table record]
-  (jdbc-deprecated/with-connection @default-connection (persist-map record table)))
+   [table record connection]
+   (jdbc-deprecated/with-connection connection (persist-map record table)))
 
-(defn save-records
-  "Persist multiple records."
-  [table records]
-  (jdbc-deprecated/with-connection @default-connection
-    (doseq [record records]
-      (persist-map record table))))
+ (defn save-records
+   "Persist multiple records."
+   [table records connection]
+   (jdbc-deprecated/with-connection connection
+     (doseq [record records]
+       (persist-map record table))))
 
-(defn insert-record!
-  "Insert record into the db. Use this when there is no id field"
-  ([table record]
-   (insert-record! table record @default-connection))
-  ([table record conn]
-   (jdbc/insert! conn table (cljmap->sqlmap record))))
+ (defn insert-record!
+   "Insert record into the db. Use this when there is no id field"
+   [table record connection]
+   (jdbc/insert! connection table (cljmap->sqlmap record)))
 
-(defn insert-records!
-  "Insert record into the db. Use this when there is no id field"
-  ([table records]
-   (doseq [record records] (insert-record! table record)))
-  ([table records conn]
-   (doseq [record records] (insert-record! table record conn))))
+ (defn insert-records!
+   "Insert record into the db. Use this when there is no id field"
+   ([table records]
+      (doseq [record records] (insert-record! table record)))
+   ([table records conn]
+      (doseq [record records] (insert-record! table record conn))))
+ 
 
-(defn do-command
-  "Execute a single command against the database"
-  [command]
-  (jdbc-deprecated/with-connection @default-connection
-    (jdbc-deprecated/do-commands command)))
+ (defn do-command
+   "Execute a single command against the database"
+   [command connection]
+   (jdbc-deprecated/with-connection connection
+     (jdbc-deprecated/do-commands command)))
+ 
 
-(defn do-prepared
-  "Execute a single prepared statement against the database"
-  ([sql parameters]
-   (do-prepared sql parameters @default-connection))
-  ([sql parameters conn]
-   (jdbc-deprecated/with-connection conn
-    (jdbc-deprecated/do-prepared sql (mapv ->sql parameters)))))
+ (defn do-prepared
+   "Execute a single prepared statement against the database"
+   [sql parameters connection]
+   (jdbc-deprecated/with-connection connection
+     (jdbc-deprecated/do-prepared sql (mapv ->sql parameters)))))
 
 ;; Update table api
 (defn update
@@ -591,11 +572,10 @@
 
 (defn- exec-update
   [{:keys [name connection] :as update}]
-  (let [conn (or connection @default-connection)
-        sql (to-update-sql update conn)
+  (let [sql (to-update-sql update connection)
         parameters (prepare-parms update)
-        [i ms] (dates/ms-taken (do-prepared sql parameters conn))
-        _ (put! @log-channel {:type "update" :sql sql :parameters parameters :ms ms})]
+        [i ms] (dates/ms-taken (do-prepared sql parameters connection))
+        #_(put! @log-channel {:type "update" :sql sql :parameters parameters :ms ms})]
     i))
 
 (defn exec

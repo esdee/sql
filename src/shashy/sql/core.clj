@@ -7,8 +7,6 @@
             [shashy.date-utilities.core :as dates])
   (:import [java.sql Connection PreparedStatement ResultSet Timestamp]))
 
-;;TODO inserts not showing logged
-
 ;; --- To Sql Protocol ---------------------------------------------------------
 (defprotocol I->Sql
   "Protocol to convert clojure data type to an sql data type for persistence"
@@ -53,7 +51,7 @@
   (from-sql [sql-timestamp] (dates/localize sql-timestamp)))
 
 ; --- Retrieval Functions ------------------------------------------------------
-; given a column name from a database returned by a query, clojurize it
+
 ; e.g. :id => :id
 ;      :created_at => :created-at
 ;      :active => active? if it is a boolean type
@@ -97,7 +95,7 @@
 
 (defn query
   "Initialize a query object"
-  [table-name & {:keys [connection]}]
+  [connection table-name]
   {:type ::query
    :table table-name
    :fields []
@@ -110,21 +108,8 @@
    :joins []
    :limit nil
    :transforms @default-transforms
-   :prefixes @default-prefixes
+   :prefixes []
    :connection connection})
-
-(defmacro exec-query
-  [table-name & forms]
-  `(-> (query ~table-name)
-       ~@forms
-       exec))
-
-(defmacro exec-query-first
-  [table-name & forms]
-  `(-> (query ~table-name :limit 1)
-              ~@forms
-              exec
-              first))
 
 (defn- uquery
   [query key vals]
@@ -145,30 +130,58 @@
   [table field]
   (str (name table) "." (name field)))
 
-(defn sql-aggregate-field
-  [aggregate-fn field as-values]
-  (format "%s(%s) as %s"
-          aggregate-fn
-          (name field)
-          (if (seq as-values) (name (last as-values))
-                              (name field))))
+(defn ->column-name
+  [field-name]
+  (str/replace field-name #"\." "_"))
+
+(defn ->column-name-as
+  [field]
+  (let [field-name (name field)]
+    (format "%s as %s" field-name (->column-name field-name))))
+
+(defn format-function-field-seq
+  [field-fn field-name rest-values]
+  (let [count-vals (count (seq rest-values))
+        simple-as (partial format "%s(%s) as %s" field-fn field-name)]
+    (cond
+     (= 0 count-vals) (simple-as (str field-fn "_" (->column-name field-name)))
+     (= 1 count-vals) (simple-as (->column-name (name (last rest-values))))
+     :else (format "%s(%s) as %s"
+                   field-fn
+                   (str/join " " (cons field-name (drop-last rest-values)))
+                   (->column-name (name (last rest-values)))))))
+
+(defn parse-field-seq
+  "Parse a field argument that is a seq.
+   Examples are 
+   [:field_x :rename_to_field_y]
+   or (left :name 3)
+   or (left :name 3 :short_name)"
+  [field-or-fn field rest-values]
+  (let [field-name (name field)
+        column-name (->column-name field-name)
+        named-first (name field-or-fn)]
+    (if (keyword? field-or-fn)
+      (format "%s as %s" named-first column-name)
+      (format-function-field-seq named-first field-name rest-values))))
+
+                                        ; (sql/fields [:id (left :name 3)])
 
 (defmacro fields
   [query field-names]
   "Assoc a field name or seq of field names to a query"
-  `(->> (if (= clojure.lang.Symbol (class '~field-names)) ~field-names
-                                                          '~field-names)
+  `(->> '~field-names
           (map (fn [field#]
                  (condp = (class field#)
-                   clojure.lang.Keyword (name field#)
-                   String (identity field#)
-                   (sql-aggregate-field (name (first field#))
-                                        (second field#)
-                                        (drop 2 field#)))))
+                   clojure.lang.Keyword (->column-name-as field#)
+                   String field#
+                   (parse-field-seq (first field#)
+                                    (second field#)
+                                    (drop 2 field#)))))
           (update-in ~query [:fields] concat)))
 
 (defn group-by
-  [query & group-bys]
+  [query group-bys]
   (uquery query :group-by group-bys))
 
 (defn join
@@ -192,10 +205,10 @@
     (uquery query :joins qualified-joins)))
 
 (defn order-by
-  [query & orders]
+  [query order-bys]
   (let [make-order-by #(str (name %1) " " (when %2 (name %2)))
         qualified-orders (map #(make-order-by (first %) (last %))
-                                (partition 2 2 [nil] orders))]
+                                (partition 2 2 [nil] order-bys))]
     (uquery query :order-by qualified-orders)))
 
 ;; Where Functions --------------------------------------------------------------
@@ -230,9 +243,10 @@
 
 (defn sql-in
   [x y]
-  (if (keyword? x)
-    [(format "%s in(%s)" (name x) (str/join "," (map #(str "'" % "'") y))) nil]
-    [(format "%s in(%s)" (name y) (str/join "," (map #(str "'" % "'") x))) nil]))
+  (let [xk? (keyword? x)
+        ?s (str/join "," (repeat (if xk? (count y) (count x)) "?"))]
+    [(format "%s in(%s)" (name (if xk? x y)) ?s)
+     (if xk? y x)]))
 
 (defn sql-null?
   [n x]
@@ -312,7 +326,7 @@
 
 (defn transform-with
   [query & transforms]
-  (uquery query :transforms (vec transforms)))
+  (assoc query :transforms (vec transforms)))
 
 (defn add-transforms
   [query & transforms]
@@ -413,7 +427,7 @@
          (map (fn [{transforms :transforms}]
                 (let [results (with-open [^ResultSet rs (.getResultSet stmt)]
                                 (do-transforms (doall (jdbc/result-set-seq rs))
-                                               transforms))
+                                               (or (seq transforms) @default-transforms)))
                       _ (.getMoreResults stmt)]
                   results)))
          (zipmap (map :identifier queries)))))
@@ -482,11 +496,11 @@
 
 ; prepare a clojure map for persisting to a rdbms
 ; keywords become strings, data types are converted
-((defn cljmap->sqlmap
-   [clj-map]
-   (apply merge
-          (map (fn [[k v]] {(key->col k) (->sql v)})
-               clj-map)))
+(defn cljmap->sqlmap
+  [clj-map]
+  (apply merge
+         (map (fn [[k v]] {(key->col k) (->sql v)})
+              clj-map)))
 
  ;; Commented out because inserts do not need to be handled in this library
 (comment 
@@ -523,20 +537,18 @@
       (doseq [record records] (insert-record! table record)))
    ([table records conn]
       (doseq [record records] (insert-record! table record conn))))
- 
 
  (defn do-command
    "Execute a single command against the database"
    [command connection]
    (jdbc-deprecated/with-connection connection
-     (jdbc-deprecated/do-commands command)))
- 
+     (jdbc-deprecated/do-commands command))))
 
- (defn do-prepared
+(defn do-prepared
    "Execute a single prepared statement against the database"
    [sql parameters connection]
    (jdbc-deprecated/with-connection connection
-     (jdbc-deprecated/do-prepared sql (mapv ->sql parameters)))))
+     (jdbc-deprecated/do-prepared sql (mapv ->sql parameters))))
 
 ;; Update table api
 (defn update
@@ -602,3 +614,6 @@
                           flatten
                           (apply hash-map))]
     (clojure.walk/postwalk-replace replacements m)))
+
+(finder-map {:id 1 :last-name "Test"})
+

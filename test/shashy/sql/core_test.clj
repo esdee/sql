@@ -95,6 +95,7 @@
              (-> query
                  (sql/fields ["left(name, 3) as short_name"])
                  sql/exec))))))
+
 ;;; Demonstarting Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"
@@ -151,6 +152,7 @@
                (sql/add-transforms
                  (fn [m] (zipmap (map name (keys m)) (vals m))))
                sql/exec)))))
+
 ;;; Where conditions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest single-where-conditions
   (testing "single conditions"
@@ -181,6 +183,7 @@
              (-> users
                  (sql/where {:department_id 101})
                  sql/exec))))))
+
 ;;; Testing multiple Where clauses ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest multiple-where-conditions
   (let [users (-> :users query (sql/fields [:id]))]
@@ -204,6 +207,7 @@
                  (sql/where {:id 2
                              :department_id 100})
                  sql/exec))))))
+
 (deftest single-table-select
   (let [table-data  [{:id 1 :name "User 1" :department-id 100}
                      {:id 2 :name "User a2" :department-id 100}

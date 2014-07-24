@@ -34,7 +34,9 @@
                             [:buildings "integer" :not :null]
                             [:division_id "integer" :not :null])
      (jdbc/create-table-ddl :names
-                            [:name "varchar(100)" :not :null])
+                            [:name "varchar(100)" :not :null]
+                            [:terminated_at "datetime"]
+                            [:rehire "boolean not null default false"])
      (jdbc/create-table-ddl :users
                             [:id "integer" :primary :key]
                             [:name "varchar(100)" :not :null]
@@ -59,7 +61,12 @@
                                       :buildings 4 :division_id 2000}
                                      {:id 102 :name "Dept 102"
                                       :buildings 8 :division_id 2000}]]
-                      [:names [{:name "John"} {:name "Jules"} {:name "Jim"} {:name "John"}]]
+                      [:names [{:name "John"}
+                               {:name "Jules"}
+                               {:name "John"}
+                               {:name "Jim"
+                                :terminated_at (java.sql.Timestamp. 1)
+                                :rehire true}]]
                       [:users [{:id 1 :name "User 1" :department_id 100}
                                {:id 2 :name "User a2" :department_id 100}
                                {:id 3 :name "User 3" :department_id 101}]]]
@@ -176,6 +183,29 @@
              (-> users
                  (sql/where (in :id (range 1 4)))
                  sql/exec)))))
+  (testing "null and not null conditions"
+    (let [names (-> :names query (sql/fields [:name]))]
+      (is (= #{"John" "Jules"}
+             (set
+               (map :name
+                    (-> names
+                        (sql/where (null? :terminated_at))
+                        sql/exec)))))
+      (is (= #{"Jim"}
+             (set
+               (map :name
+                    (-> names
+                        (sql/where (not-null? :terminated_at))
+                        sql/exec)))))))
+  (testing "true and false conditions"
+    (let [names (-> :names query (sql/fields [:name]))]
+      (is (= #{}
+             (set
+               (map :name
+                    (-> names
+                        (sql/where (true? :rehire)))))))
+
+      ))
   (testing "alternate where syntax"
     (let [users (-> :users query (sql/fields [:id]))]
       (is (= [{:id 1}]

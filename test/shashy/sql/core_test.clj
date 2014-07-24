@@ -54,7 +54,8 @@
     (drop-all-tables db)
     (create-all-tables db)
     (seed-all-tables [[:divisions [{:id 1000 :name "Div 1000"}
-                                   {:id 2000 :name "Div 2000"}]]
+                                   {:id 2000 :name "Div 2000"}
+                                   {:id 9999 :name "I have no departments"}]]
                       [:departments [{:id 100 :name "Dept 100"
                                       :buildings 2 :division_id 1000}
                                      {:id 101 :name "Dept 101"
@@ -199,13 +200,18 @@
                         sql/exec)))))))
   (testing "true and false conditions"
     (let [names (-> :names query (sql/fields [:name]))]
-      (is (= #{}
+      (is (= #{"Jim"}
              (set
                (map :name
                     (-> names
-                        (sql/where (true? :rehire)))))))
-
-      ))
+                        (sql/where (true? :rehire))
+                        sql/exec)))))
+      (is (= #{"John" "Jules"}
+                   (set
+                     (map :name
+                          (-> names
+                              (sql/where (false? :rehire))
+                              sql/exec))))))
   (testing "alternate where syntax"
     (let [users (-> :users query (sql/fields [:id]))]
       (is (= [{:id 1}]
@@ -215,7 +221,7 @@
       (is (= [{:id 3}]
              (-> users
                  (sql/where {:department_id 101})
-                 sql/exec))))))
+                 sql/exec)))))))
 
 ;;; Testing multiple Where clauses ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest multiple-where-conditions
@@ -321,4 +327,15 @@
                  (sql/where (= :departments.id 100))
                  (sql/limit 1)
                  (sql/order-by [:users.name :desc])
-                 sql/exec))))))
+                 sql/exec)))))
+  (testing "can use outer join"
+    (is (= [{:divisions-id 1000 :departments-id 100}
+            {:divisions-id 2000 :departments-id 101}
+            {:divisions-id 2000 :departments-id 102}
+            {:divisions-id 9999 :departments-id nil}
+            ]
+             (-> (query :divisions)
+                 (sql/fields [:divisions.id :departments.id])
+                 (sql/left-outer-join :departments [:id :division_id])
+                 (sql/order-by [:divisions.id :asc :departments.id :asc])
+                 sql/exec))))) 

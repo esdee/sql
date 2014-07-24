@@ -195,13 +195,13 @@
                               (str/join " and " (map join-syntax fields)))]]
     (uquery query :joins qualified-joins)))
 
-(defn left-join
+(defn left-outer-join
   "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
   [{ltable :table :as query} rtable & fields]
   (let [join-syntax (fn [[lf & rf]]
                       (str (qfname ltable lf) "="
                            (qfname rtable (or (first rf) lf))))
-        qualified-joins [(str "left join " (name rtable) " on "
+        qualified-joins [(str "left outer join " (name rtable) " on "
                               (str/join " and " (map join-syntax fields)))]]
     (uquery query :joins qualified-joins)))
 

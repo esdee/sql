@@ -107,6 +107,30 @@
                  (sql/fields ["left(name, 3) as short_name"])
                  sql/exec))))))
 
+;;; Exec 1 versus exec ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(deftest testing-exec-and-exec1
+  (testing "exec will return a sequence of maps"
+    (is (= [{:id 1} {:id 2} {:id 3}]
+           (-> (query :users)
+               (sql/fields [:id])
+               (sql/order-by [:id])
+               sql/exec))))
+  (testing "exec may return an empty sequence"
+    (is (= []
+           (-> (query :users)
+               (sql/where (= :id 1000))
+               sql/exec))))
+  (testing "exec1 will return a single map"
+    (is (= {:id 1} 
+           (-> (query :users)
+               (sql/fields [:id])
+               (sql/order-by [:id])
+               sql/exec1))))
+  (testing "exec1 may return a nil"
+    (is (= nil
+           (-> (query :users)
+               (sql/where (= :id 1000))
+               sql/exec1)))))
 ;;; Demonstrating Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"

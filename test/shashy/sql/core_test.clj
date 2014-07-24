@@ -106,7 +106,7 @@
                  (sql/fields ["left(name, 3) as short_name"])
                  sql/exec))))))
 
-;;; Demonstarting Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Demonstrating Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"
     (is (= 2

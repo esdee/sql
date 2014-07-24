@@ -185,25 +185,25 @@
   [query group-bys]
   (uquery query :group-by group-bys))
 
-(defn join
-  "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
-  [{ltable :table :as query} rtable & fields]
+;;; Joins ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn- join*
+  [{ltable :table :as query} type rtable fields]
   (let [join-syntax (fn [[lf & rf]]
                       (str (qfname ltable lf) "="
                            (qfname rtable (or (first rf) lf))))
-        qualified-joins [(str "join " (name rtable) " on "
+        qualified-joins [(str type " " (name rtable) " on "
                               (str/join " and " (map join-syntax fields)))]]
     (uquery query :joins qualified-joins)))
 
+(defn join
+  "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
+  [query rtable & fields]
+  (join* query "join" rtable fields))
+
 (defn left-outer-join
   "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
-  [{ltable :table :as query} rtable & fields]
-  (let [join-syntax (fn [[lf & rf]]
-                      (str (qfname ltable lf) "="
-                           (qfname rtable (or (first rf) lf))))
-        qualified-joins [(str "left outer join " (name rtable) " on "
-                              (str/join " and " (map join-syntax fields)))]]
-    (uquery query :joins qualified-joins)))
+  [query rtable & fields]
+  (join* query "left outer join" rtable fields))
 
 (defn order-by
   [query order-bys]
@@ -627,6 +627,3 @@
                           flatten
                           (apply hash-map))]
     (clojure.walk/postwalk-replace replacements m)))
-
-(finder-map {:id 1 :last-name "Test"})
-

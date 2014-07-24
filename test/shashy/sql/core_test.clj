@@ -215,68 +215,7 @@
 (deftest queries-with-distinct
   (testing "returns distinct fields"
     (let [rows (-> :names query (sql/fields [:name]) sql/distinct sql/exec)]
-      (is (= #{"Jim" "John" "Jules"} (set (map :name rows)))))
-    ))
-
-(deftest single-table-select
-  (let [table-data  [{:id 1 :name "User 1" :department-id 100}
-                     {:id 2 :name "User a2" :department-id 100}
-                     {:id 3 :name "User 3" :department-id 101}]
-        query (query :users)]
-    (testing "exec will return all rows"
-      (is (= table-data (sql/exec query))))
-    (testing "exec will return rows based on a where clause"
-      (is (= (drop-last table-data)
-             (sql/exec (sql/where query (< :id 3)))))
-      (is (= (drop-last table-data)
-             (sql/exec (sql/where query (or (= 1 :id)
-                                            (= 2 :id))))))
-      (is (= [(first table-data)]
-             (sql/exec (sql/where query (= :id 1)))))
-      (is (= [(second table-data)]
-             (sql/exec (sql/where query (= :id (inc 1))))))
-      (is (= [(second table-data)]
-             (sql/exec (sql/where query (and (= :department_id 99)
-                                             (> :id 1))))))
-      (is (= (drop-last table-data)
-             (-> query
-                 (sql/where (in :id [1 2]))
-                 (sql/exec))))
-      (is (= (drop-last table-data)
-             (-> query
-                 (sql/where (in :name ["User 1" "User a2"]))
-                 (sql/exec))))
-      (is (= [(second table-data)]
-             (sql/exec (sql/where query {:department_id 100
-                                         :name "User a2"}))))
-      (is (empty?
-             (sql/exec (sql/where query {:department_id 1})))))
-    (testing "exec1 will return a single row"
-      (is (= (first table-data)
-             (sql/exec1 query)))
-      (is (= (second table-data)
-             (sql/exec1 (sql/where query (= 2 :id)))))
-      (is (nil?
-           (sql/exec1 (sql/where query (= 0 :id))))))
-    (testing "order-by supports asc and desc asc is assumed if none supplied"
-      (is (= [{:id 1} {:id 3} {:id 2}]
-             (-> query
-                 (sql/fields [:id])
-                 (sql/order-by [:name])
-                 sql/exec)))
-      (is (= [{:id 2} {:id 3} {:id 1}]
-             (-> query
-                 (sql/fields [:id])
-                 (sql/order-by [:name :desc])
-                 sql/exec)))
-      (is (= [{:id 2} {:id 3} {:id 1}]
-             (-> query
-                 (sql/fields [:id])
-                 (sql/order-by [:name :desc :department_id :asc])
-                 sql/exec))))
-    (testing "limit returns the number of rows specified"
-      (is (= (take 2 table-data)
-             (-> query (sql/limit 2) sql/exec))))))
+      (is (= #{"Jim" "John" "Jules"} (set (map :name rows)))))))
 
 ;;; Demonstrating the use of aggregation functions e.g. sum, count, max, min ;;;
 (deftest aggregrations

@@ -17,7 +17,7 @@
 ;;; Database initialization functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn drop-all-tables
   [db]
-  (let [tables ["divisions" "departments" "users"]
+  (let [tables ["divisions" "departments" "names" "users"]
         drop-command (fn [t] (format "drop table if exists %s" t))
         drop-all (str/join ";" (map drop-command tables))]
     (jdbc/db-do-commands db drop-all)))
@@ -33,6 +33,8 @@
                             [:name "varchar(100)" :not :null]
                             [:buildings "integer" :not :null]
                             [:division_id "integer" :not :null])
+     (jdbc/create-table-ddl :names
+                            [:name "varchar(100)" :not :null])
      (jdbc/create-table-ddl :users
                             [:id "integer" :primary :key]
                             [:name "varchar(100)" :not :null]
@@ -57,6 +59,7 @@
                                       :buildings 4 :division_id 2000}
                                      {:id 102 :name "Dept 102"
                                       :buildings 8 :division_id 2000}]]
+                      [:names [{:name "John"} {:name "Jules"} {:name "Jim"} {:name "John"}]]
                       [:users [{:id 1 :name "User 1" :department_id 100}
                                {:id 2 :name "User a2" :department_id 100}
                                {:id 3 :name "User 3" :department_id 101}]]]
@@ -208,6 +211,13 @@
                              :department_id 100})
                  sql/exec))))))
 
+;;; Testing Distinct ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(deftest queries-with-distinct
+  (testing "returns distinct fields"
+    (let [rows (-> :names query (sql/fields [:name]) sql/distinct sql/exec)]
+      (is (= #{"Jim" "John" "Jules"} (set (map :name rows)))))
+    ))
+
 (deftest single-table-select
   (let [table-data  [{:id 1 :name "User 1" :department-id 100}
                      {:id 2 :name "User a2" :department-id 100}
@@ -226,7 +236,7 @@
       (is (= [(second table-data)]
              (sql/exec (sql/where query (= :id (inc 1))))))
       (is (= [(second table-data)]
-             (sql/exec (sql/where query (and (= :department_id 100)
+             (sql/exec (sql/where query (and (= :department_id 99)
                                              (> :id 1))))))
       (is (= (drop-last table-data)
              (-> query

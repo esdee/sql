@@ -1,5 +1,5 @@
 (ns shashy.sql.core
-  (:refer-clojure :exclude (group-by set))
+  (:refer-clojure :exclude (group-by set distinct))
   (:require [clojure.string :as str]
             [clojure.walk :as walk]
             [clojure.java.jdbc :as jdbc]
@@ -105,6 +105,7 @@
    :having-parameters []
    :group-by []
    :order-by []
+   :distinct? false
    :joins []
    :limit nil
    :transforms @default-transforms
@@ -210,6 +211,11 @@
         qualified-orders (map #(make-order-by (first %) (last %))
                                 (partition 2 2 [nil] order-bys))]
     (uquery query :order-by qualified-orders)))
+
+(defn distinct
+  "Add distinct clause to query"
+  [query]
+  (assoc query :distinct? true))
 
 ;; Where Functions --------------------------------------------------------------
 (defn sql-comparator
@@ -389,6 +395,12 @@
         (str sql " limit " limit)))
     sql))
 
+(defn- sql-distinct
+  [{distinct? :distinct?} sql]
+  (if distinct?
+    (str/replace sql #"select" "select distinct")
+    sql))
+
 (defn to-query-sql
   ([{:keys [joins prefixes] :as query} conn]
    (let [sql (str "select "
@@ -401,6 +413,7 @@
                   (sql-order-by query))]
      (->> sql
           (sql-limit query conn)
+          (sql-distinct query)
           (insert-prefixes (or prefixes @default-prefixes)))))
   ([{:keys [joins prefixes] :as query}]
    (let [sql (str "select "

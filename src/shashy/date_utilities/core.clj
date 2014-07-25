@@ -5,14 +5,54 @@
             [shashy.date-utilities.date-formats :refer (formats)])
   (:import [org.joda.time DateTime DateTimeZone Days Minutes]
            [org.joda.time.format DateTimeFormat DateTimeFormatter ISODateTimeFormat]
-           [java.util Date GregorianCalendar]))
+           [java.util Date GregorianCalendar TimeZone]))
 
 ; Convert an instance of a joda DateTime to an instance of a GregorianCalendar
 (defn- joda->greg-cal
   [joda-time]
-  (let [d (GregorianCalendar.)]
+  (let [d (GregorianCalendar/getInstance (TimeZone/getTimeZone "UTC"))]
     (.setTimeInMillis d (.getMillis joda-time))
     d))
+
+; --- Base ->utc Functions -----------------------------------------------------
+(defprotocol IUTC
+  "Protocol for converting dateable things to utc times"
+  (->utc [dateable] "Conevrt a date-able thing to a utc time"))
+
+(extend-protocol IUTC
+  nil
+  (->utc [_] nil)
+
+  Long
+  (->utc [long] (joda->greg-cal (DateTime. long)))
+
+  String
+  (->utc [s]
+    (->> formats
+         (map #(try (.parseLocalDateTime % s)
+                (catch Exception _ nil)))
+         (remove nil?)
+         (first)
+         (.toDateTime)
+         (->utc)))
+
+  java.sql.Date
+  (->utc [sql-date] (->utc (.getTime sql-date)))
+
+  java.sql.Time
+  (->utc [sql-time] (->utc (.getTime sql-time)))
+
+  java.sql.Timestamp
+  (->utc [sql-ts] (->utc (.getTime sql-ts)))
+
+  java.util.Date
+  (->utc [date] (->utc (.getTime date)))
+
+  java.util.GregorianCalendar
+  (->utc [calendar] (->utc (.getTimeInMillis calendar)))
+
+  org.joda.time.DateTime
+  (->utc [date-time] (->utc (.getMillis date-time))))
 
 ; --- Base Localization functions ----------------------------------------------
 (def ^{:doc "The Local Time Zone object"}

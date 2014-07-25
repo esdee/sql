@@ -46,9 +46,9 @@
   (from-sql [_] nil)
   ; sql Dates are the exceptions
   java.sql.Date
-  (from-sql [sql-date] (dates/localize sql-date))
+  (from-sql [sql-date] (dates/->utc sql-date))
   java.sql.Timestamp
-  (from-sql [sql-timestamp] (dates/localize sql-timestamp)))
+  (from-sql [sql-timestamp] (dates/->utc sql-timestamp)))
 
 ; --- Retrieval Functions ------------------------------------------------------
 
@@ -200,10 +200,10 @@
   [query rtable & fields]
   (join* query "join" rtable fields))
 
-(defn left-outer-join
+(defn left-join
   "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
   [query rtable & fields]
-  (join* query "left outer join" rtable fields))
+  (join* query "left join" rtable fields))
 
 (defn order-by
   [query order-bys]

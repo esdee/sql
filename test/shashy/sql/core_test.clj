@@ -131,6 +131,7 @@
            (-> (query :users)
                (sql/where (= :id 1000))
                sql/exec1)))))
+
 ;;; Demonstrating Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"
@@ -146,6 +147,15 @@
            (-> (query :users)
                (sql/fields [:department_id])
                (sql/exec)))))
+  (testing "boolean fields are post-pended with a ?"
+    (is (= [{:name "Jim"   :rehire? true}
+            {:name "John"  :rehire? false}
+            {:name "John"  :rehire? false}
+            {:name "Jules" :rehire? false}]
+           (-> (query :names)
+               (sql/fields [:name :rehire])
+               (sql/order-by [:name :asc])
+               sql/exec))))
   (testing "the default transform can be switched off"
     (is (= [{:department_id 100} {:department_id 100} {:department_id 101}]
            (-> (query :users)
@@ -246,6 +256,24 @@
              (-> users
                  (sql/where {:department_id 101})
                  sql/exec)))))))
+
+;;; Date Time translation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(deftest handling-times
+  (let [expected-date (doto (java.util.GregorianCalendar/getInstance
+                               (java.util.TimeZone/getTimeZone "UTC"))
+                        (.setTimeInMillis 1))]
+    (testing "database times are converted into utc dates automagically"
+      (is (= {:terminated-at expected-date}
+             (-> (query :names)
+                 (sql/fields [:terminated_at])
+                 (sql/where (not-null? :terminated_at))
+                 sql/exec1))))
+    (testing "dates can be used as parameters without converting to sql timestamps"
+      (is (= {:terminated-at expected-date}
+             (-> (query :names)
+                 (sql/fields [:terminated_at])
+                 (sql/where {:terminated_at expected-date})
+                 sql/exec1))))))
 
 ;;; Testing multiple Where clauses ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest multiple-where-conditions
@@ -356,10 +384,9 @@
     (is (= [{:divisions-id 1000 :departments-id 100}
             {:divisions-id 2000 :departments-id 101}
             {:divisions-id 2000 :departments-id 102}
-            {:divisions-id 9999 :departments-id nil}
-            ]
-             (-> (query :divisions)
+            {:divisions-id 9999 :departments-id nil}]
+           (-> (query :divisions)
                  (sql/fields [:divisions.id :departments.id])
-                 (sql/left-outer-join :departments [:id :division_id])
+                 (sql/left-join :departments [:id :division_id])
                  (sql/order-by [:divisions.id :asc :departments.id :asc])
                  sql/exec))))) 

@@ -9,8 +9,7 @@
   {:classname    "org.h2.Driver"
     :subprotocol "h2:mem:"
     :subname     "sql_test;DB_CLOSE_DELAY=-1" ; keep in memory as long as jvm is open
-    :user        "sa"
-    :password    ""})
+    :user        "sa"})
 
 (def query (partial sql/query connection))
 
@@ -386,7 +385,7 @@
             {:divisions-id 2000 :departments-id 102}
             {:divisions-id 9999 :departments-id nil}]
            (-> (query :divisions)
-                 (sql/fields [:divisions.id :departments.id])
                  (sql/left-join :departments [:id :division_id])
+                 (sql/fields [:divisions.id :departments.id])
                  (sql/order-by [:divisions.id :asc :departments.id :asc])
                  sql/exec))))) 

@@ -160,8 +160,8 @@
     (is (= [{:department_id 100} {:department_id 100} {:department_id 101}]
            (-> (query :users)
                (sql/fields [:department_id])
-               (sql/transform-with identity)
-               (sql/exec)))))
+               sql/no-transforms
+               sql/exec))))
   (testing "maps can be transformed according to a supplied transform-fn"
     (is (= [{"Department_id" 100 "Id" 1} {"Department_id" 100 "Id" 2} {"Department_id" 101 "Id" 3}]
            (-> (query :users)

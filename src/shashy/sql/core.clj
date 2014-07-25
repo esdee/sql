@@ -334,6 +334,10 @@
   [query & transforms]
   (assoc query :transforms (vec transforms)))
 
+(defn no-transforms
+  [query]
+  (transform-with query identity))
+
 (defn add-transforms
   [query & transforms]
   (update-in query

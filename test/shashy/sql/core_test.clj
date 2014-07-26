@@ -1,4 +1,6 @@
 (ns shashy.sql.core-test
+  (:import (java.util GregorianCalendar TimeZone)
+           (java.sql Timestamp))
   (:require [clojure.test :refer :all]
             [clojure.java.jdbc :as jdbc]
             [clojure.string :as str]
@@ -65,7 +67,7 @@
                                {:name "Jules"}
                                {:name "John"}
                                {:name "Jim"
-                                :terminated_at (java.sql.Timestamp. 1)
+                                :terminated_at (Timestamp. 1)
                                 :rehire true}]]
                       [:users [{:id 1 :name "User 1" :department_id 100}
                                {:id 2 :name "User a2" :department_id 100}
@@ -258,8 +260,8 @@
 
 ;;; Date Time translation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest handling-times
-  (let [expected-date (doto (java.util.GregorianCalendar/getInstance
-                               (java.util.TimeZone/getTimeZone "UTC"))
+  (let [expected-date (doto (GregorianCalendar/getInstance
+                               (TimeZone/getTimeZone "UTC"))
                         (.setTimeInMillis 1))]
     (testing "database times are converted into utc dates automagically"
       (is (= {:terminated-at expected-date}
@@ -324,7 +326,7 @@
             {:departments-id 101 :emp-count 1}
             {:departments-id 102 :emp-count 0}]
            (-> (query :departments)
-               (sql/left-join :users [:id :department_id])
+               (sql/left-join :users [[:id :department_id]])
                (sql/fields [:departments.id (count :users.id :emp_count)])
                (sql/group-by [:departments.id])
                sql/exec))))
@@ -332,7 +334,7 @@
     (is (= [{:divisions-id 1000 :sum-b 2}
             {:divisions-id 2000 :sum-b 12}]
            (-> (query :divisions)
-               (sql/join :departments [:id :division_id])
+               (sql/join :departments [[:id :division_id]])
                (sql/fields [:divisions.id (sum :buildings :sum_b)])
                (sql/group-by [:divisions.id])
                (sql/order-by [:sum_b])
@@ -340,7 +342,7 @@
   (testing "will select based on a having clause"
     (is (= [{:divisions-id 2000 :sum-departments-buildings 12}]
            (-> (query :divisions)
-               (sql/join :departments [:id :division_id])
+               (sql/join :departments [[:id :division_id]])
                (sql/fields [:divisions.id (sum :departments.buildings)])
                (sql/group-by [:divisions.id])
                (sql/having (> (sum :buildings) 8))
@@ -348,6 +350,13 @@
 
 ;;; Demonstrating the use of joins ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest joins
+  (testing "field names will be qualified automatically"
+    (let [query0 (-> (query :departments)
+                    (sql/join :users [[:departments.id :users.department_id]]))
+          query1 (-> (query :departments)
+                    (sql/join :users [[:id :department_id]]))]
+      (is (= (sql/to-query-sql query0)
+             (sql/to-query-sql query1)))))
   (let [table-data [{:users-id 1 :users-name "User 1" :departments-id 100
                      :departments-name "Dept 100"}
                     {:users-id 2 :users-name "User a2" :departments-id 100
@@ -355,7 +364,7 @@
                     {:users-id 3 :users-name "User 3" :departments-id 101
                      :departments-name "Dept 101"}]
         query (-> (query :departments)
-                  (sql/join :users [:id :department_id])
+                  (sql/join :users [[:id :department_id]])
                   (sql/fields [:users.id
                                :users.name
                                :departments.id
@@ -385,7 +394,7 @@
             {:divisions-id 2000 :departments-id 102}
             {:divisions-id 9999 :departments-id nil}]
            (-> (query :divisions)
-                 (sql/left-join :departments [:id :division_id])
+                 (sql/left-join :departments [[:id :division_id]])
                  (sql/fields [:divisions.id :departments.id])
                  (sql/order-by [:divisions.id :asc :departments.id :asc])
                  sql/exec))))) 

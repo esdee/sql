@@ -129,7 +129,10 @@
 (defn- qfname
   "Qualify a field name to table.field"
   [table field]
-  (str (name table) "." (name field)))
+  (let [field-name (name field)]
+    (if (re-seq #"\." field-name)
+      field-name ; already qualified, return as is
+      (str (name table) "." (name field)))))
 
 (defn ->column-name
   [field-name]
@@ -188,21 +191,21 @@
 ;;; Joins ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn- join*
   [{ltable :table :as query} type rtable fields]
-  (let [join-syntax (fn [[lf & rf]]
+  (let [join-syntax (fn [[lf rf]]
                       (str (qfname ltable lf) "="
-                           (qfname rtable (or (first rf) lf))))
+                           (qfname rtable rf)))
         qualified-joins [(str type " " (name rtable) " on "
                               (str/join " and " (map join-syntax fields)))]]
     (uquery query :joins qualified-joins)))
 
 (defn join
   "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
-  [query rtable & fields]
+  [query rtable fields]
   (join* query "join" rtable fields))
 
 (defn left-join
   "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
-  [query rtable & fields]
+  [query rtable fields]
   (join* query "left join" rtable fields))
 
 (defn order-by

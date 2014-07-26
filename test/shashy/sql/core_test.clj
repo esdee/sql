@@ -388,13 +388,33 @@
                  (sql/limit 1)
                  (sql/order-by [:users.name :desc])
                  sql/exec)))))
-  (testing "can use outer join"
-    (is (= [{:divisions-id 1000 :departments-id 100}
-            {:divisions-id 2000 :departments-id 101}
-            {:divisions-id 2000 :departments-id 102}
-            {:divisions-id 9999 :departments-id nil}]
-           (-> (query :divisions)
-                 (sql/left-join :departments [[:id :division_id]])
-                 (sql/fields [:divisions.id :departments.id])
-                 (sql/order-by [:divisions.id :asc :departments.id :asc])
-                 sql/exec))))) 
+  (testing "outer joins"
+    (let [expected-data [{:divisions-id 1000 :departments-id 100}
+                         {:divisions-id 2000 :departments-id 101}
+                         {:divisions-id 2000 :departments-id 102}
+                         {:divisions-id 9999 :departments-id nil}]]
+      (testing "can use left outer join"
+        (is (= expected-data
+              (-> (query :divisions)
+                  (sql/left-join :departments [[:id :division_id]])
+                  (sql/fields [:divisions.id :departments.id])
+                  (sql/order-by [:divisions.id :asc :departments.id :asc])
+                  sql/exec))))
+      (testing "can use right outer join"
+        (is (= expected-data
+              (-> (query :departments)
+                  (sql/right-join :divisions [[:division_id :id]])
+                  (sql/fields [:divisions.id :departments.id])
+                  (sql/order-by [:divisions.id :asc :departments.id :asc])
+                  sql/exec))))
+      (testing "right and left joins are identical if the table order is transpossed"
+        (is (= (-> (query :divisions)
+                  (sql/left-join :departments [[:id :division_id]])
+                  (sql/fields [:divisions.id :departments.id])
+                  (sql/order-by [:divisions.id :asc :departments.id :asc])
+                  sql/exec)
+               (-> (query :departments)
+                  (sql/right-join :divisions [[:division_id :id]])
+                  (sql/fields [:divisions.id :departments.id])
+                  (sql/order-by [:divisions.id :asc :departments.id :asc])
+                  sql/exec)))))))

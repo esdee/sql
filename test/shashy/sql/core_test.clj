@@ -417,4 +417,19 @@
                   (sql/right-join :divisions [[:division_id :id]])
                   (sql/fields [:divisions.id :departments.id])
                   (sql/order-by [:divisions.id :asc :departments.id :asc])
-                  sql/exec)))))))
+                  sql/exec))))))
+  (testing "cross joins"
+    (is (= [{:divisions-id 1000 :departments-id 100}
+            {:divisions-id 1000 :departments-id 101}
+            {:divisions-id 1000 :departments-id 102}
+            {:divisions-id 2000 :departments-id 100}
+            {:divisions-id 2000 :departments-id 101}
+            {:divisions-id 2000 :departments-id 102}
+            {:divisions-id 9999 :departments-id 100}
+            {:divisions-id 9999 :departments-id 101}
+            {:divisions-id 9999 :departments-id 102}]
+           (-> (query :departments)
+               (sql/cross-join :divisions)
+               (sql/fields [:divisions.id :departments.id])
+               (sql/order-by [:divisions.id :asc :departments.id :asc])
+               sql/exec)))))

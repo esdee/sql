@@ -214,9 +214,9 @@
   (join* query "right join" rtable fields))
 
 (defn cross-join
-  "Of the form :left-table :right-table [:left_id] [:left_id :right_id]"
-  [query rtable fields]
-  (join* query "cross join" rtable fields))
+  "Of the form :left-table :right-table"
+  [query rtable]
+  (uquery query :joins [(str "cross join " (name rtable))]))
 
 (defn order-by
   [query order-bys]

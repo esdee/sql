@@ -418,7 +418,7 @@
     (str/replace sql #"select" "select distinct")
     sql))
 
-(defn to-query-sql
+(defn- to-query-sql*
   ([{:keys [joins prefixes] :as query} conn]
    (let [sql (str "select "
                   (sql-field-names query) " from "
@@ -443,6 +443,9 @@
                   (sql-order-by query))]
      (insert-prefixes (or prefixes @default-prefixes) sql))))
 
+(defn to-query-sql
+  [query conn]
+  (str/trim (to-query-sql* query conn)))
 (defn do-transforms
   [results transforms]
   (if (seq transforms)
@@ -476,7 +479,7 @@
 ;; {:query-identifier [r1 r2 ..] ...}
 (defn- execute-statement
   [conn queries]
-  (let [sqls (str/join ";" (map #(to-query-sql % conn) queries))]
+  (let [sqls (str/join ";" (map #(to-query-sql* % conn) queries))]
     (with-open [^PreparedStatement stmt (apply jdbc/prepare-statement
                                                conn
                                                sqls

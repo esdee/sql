@@ -86,23 +86,28 @@
                      {:id 3 :name "User 3" :department-id 101}]
         query (query :users)]
     (testing "all the fields are returned by default if none are specified"
+      ; select * from users
       (is (= table-data (sql/exec query))))
     (testing "only the fields specified are returned when fields are specified"
+      ; select users.name from users
       (is (= (map (fn [m] (select-keys m [:name])) table-data)
              (-> query
                  (sql/fields [:name])
                  sql/exec))))
     (testing "fields can be renamed using the keyword syntax"
+      ; select users.name as user_name from users
       (is (= (map (fn [m] {:user-name (:name m)}) table-data)
              (-> query
                  (sql/fields [[:name :user_name]])
                  sql/exec))))
     (testing "fields can be renamed using the string syntax"
+      ; select users.name as user_name from users
       (is (= (map (fn [m] {:user-name (:name m)}) table-data)
              (-> query
                  (sql/fields ["name as user_name"])
                  sql/exec))))
     (testing "database functions can be invoked on fields using the string syntax"
+      ; select left(users.name, 3) as short_name from users
       (is (= (repeat 3 {:short-name "Use"})
              (-> query
                  (sql/fields ["left(name, 3) as short_name"])
@@ -136,8 +141,10 @@
 ;;; Demonstrating Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"
+    ; select * from users limit 2
     (is (= 2
            (-> :users query (sql/limit 2) sql/exec count)))
+    ; select * from users limit 1
     (is (= 1
            (-> :users query (sql/limit 1) sql/exec count)))))
 
@@ -203,10 +210,12 @@
 (deftest single-where-conditions
   (testing "single conditions"
     (let [users (-> :users query (sql/fields [:id]))]
+      ; select users.id from users where users.id=1
       (is (= [{:id 1}]
              (-> users
                  (sql/where (= 1 :id))
                  sql/exec)))
+      ; select users.id from users where users.id>1
       (is (= [{:id 2} {:id 3}]
              (-> users
                  (sql/where (> :id 1))
@@ -215,11 +224,13 @@
              (-> users
                  (sql/where (= :id (inc 2)))
                  sql/exec)))
+      ; select users.id from users where users.id in(1, 2, 3)
       (is (= [{:id 1} {:id 2} {:id 3}]
              (-> users
                  (sql/where (in :id (range 1 4)))
                  sql/exec)))))
   (testing "null and not null conditions"
+    ; select users.id from users where users.terminated_at is null
     (let [names (-> :names query (sql/fields [:name]))]
       (is (= #{"John" "Jules"}
              (set
@@ -227,6 +238,7 @@
                     (-> names
                         (sql/where (null? :terminated_at))
                         sql/exec)))))
+      ; select users.id from users where users.terminated_at is not null
       (is (= #{"Jim"}
              (set
                (map :name
@@ -234,6 +246,7 @@
                         (sql/where (not-null? :terminated_at))
                         sql/exec)))))))
   (testing "true and false conditions"
+    ; select users.id from users where users.rehire = true
     (let [names (-> :names query (sql/fields [:name]))]
       (is (= #{"Jim"}
              (set
@@ -241,6 +254,8 @@
                     (-> names
                         (sql/where (true? :rehire))
                         sql/exec)))))
+      ; select users.id from users where users.rehire = false
+      (let [names (-> :names query (sql/fields [:name]))]
       (is (= #{"John" "Jules"}
                    (set
                      (map :name
@@ -249,10 +264,12 @@
                               sql/exec))))))
   (testing "alternate where syntax"
     (let [users (-> :users query (sql/fields [:id]))]
+      ; select users.id from users where users.id = 1
       (is (= [{:id 1}]
              (-> users
                  (sql/where {:id 1})
                  sql/exec)))
+      ; select users.id where users.department_id = 101
       (is (= [{:id 3}]
              (-> users
                  (sql/where {:department_id 101})
@@ -280,6 +297,7 @@
 (deftest multiple-where-conditions
   (let [users (-> :users query (sql/fields [:id]))]
     (testing "multiple and clauses"
+      ; select users.id where (users.department_id = 100 and users.id > 1)
       (is (= [{:id 2}]
              (-> users
                  (sql/where
@@ -287,6 +305,7 @@
                         (> :id 1)))
                  sql/exec))))
     (testing "multiple or clauses"
+      ; select users.id where (users.department_id = 101 or id in(1, 2))
       (is (= [{:id 1} {:id 2} {:id 3}]
              (-> users
                  (sql/where
@@ -294,6 +313,7 @@
                        (in :id (range 1 3))))
                  sql/exec))))
     (testing "alternate syntax for multiple and clauses"
+      ; select users.id where (users.id = 2 and department_id = 100)
       (is (= [{:id 2}]
              (-> users
                  (sql/where {:id 2
@@ -303,25 +323,32 @@
 ;;; Testing Distinct ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest queries-with-distinct
   (testing "returns distinct fields"
+    ; select distinct names.name from names
     (let [rows (-> :names query (sql/fields [:name]) sql/distinct sql/exec)]
       (is (= #{"Jim" "John" "Jules"} (set (map :name rows)))))))
 
 ;;; Demonstrating the use of aggregation functions e.g. sum, count, max, min ;;;
 (deftest aggregrations
   (testing "will return counts"
+    ; select count(id) as id from users limit 1
     (is (= {:id 3}
            (-> (query :users)
                (sql/fields [(count :id :id)])
                sql/exec1)))
+    ; select count(id) as count_id from users limit 1
     (is (= {:count-id 3} ; default naming is aggregatefn-field
            (-> (query :users)
                (sql/fields [(count :id)])
                sql/exec1)))
+    ; select count(id) as users from users limit 1
     (is (= {:users 3}
            (-> (query :users)
                (sql/fields [(count :id :users)])
                sql/exec1))))
   (testing "will return grouped counts"
+    ; select departments.id, count(users.id) as emp_count
+    ;   from departments join users on departments.id = users.department_id
+    ;   group by departments.id
     (is (= [{:departments-id 100 :emp-count 2}
             {:departments-id 101 :emp-count 1}
             {:departments-id 102 :emp-count 0}]
@@ -331,6 +358,10 @@
                (sql/group-by [:departments.id])
                sql/exec))))
   (testing "will return sums"
+    ; select divisions.id, sum(buildings) as sum_b
+    ;  from divisions join departments on divisions.id = departments.division_id
+    ;  group by divisions.id
+    ;  order by sum_b
     (is (= [{:divisions-id 1000 :sum-b 2}
             {:divisions-id 2000 :sum-b 12}]
            (-> (query :divisions)
@@ -340,6 +371,10 @@
                (sql/order-by [:sum_b])
                sql/exec))))
   (testing "will select based on a having clause"
+    ; select divisions.id, sum(departments.buildings) as sum_departments_buildings
+    ;  from divisions join departments on divisions.id = departments.division_id
+    ;  having (sum(buildings) > 8))
+    ;  group by divisions.id
     (is (= [{:divisions-id 2000 :sum-departments-buildings 12}]
            (-> (query :divisions)
                (sql/join :departments [[:id :division_id]])
@@ -350,7 +385,7 @@
 
 ;;; Demonstrating the use of joins ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest joins
-  (testing "field names will be qualified automatically"
+  (testing "field names will be qualified with table names automatically"
     (let [query0 (-> (query :departments)
                     (sql/join :users [[:departments.id :users.department_id]]))
           query1 (-> (query :departments)
@@ -370,18 +405,36 @@
                                :departments.id
                                :departments.name]))]
     (testing "will return all records where satisfying the join"
+      ; select users.id as users_id, users.name as users_name, departments.id as departments_id
+      ;        departments.name as departments_name
+      ;  from departments join users on departments.id = users.department_id
       (is (= table-data
              (sql/exec query))))
     (testing "will compose with where clauses"
+      ; select users.id as users_id, users.name as users_name, departments.id as departments_id
+      ;        departments.name as departments_name
+      ;  from departments join users on departments.id = users.department_id
+      ;  where departments.id = 100
       (is (= (drop-last table-data)
              (-> query (sql/where (= :departments.id 100)) sql/exec))))
     (testing "will compose with limit clauses"
+      ; select users.id as users_id, users.name as users_name, departments.id as departments_id
+      ;        departments.name as departments_name
+      ;  from departments join users on departments.id = users.department_id
+      ;  where departments.id = 100
+      ;  limit 1
       (is (= (take 1 table-data)
              (-> query
                  (sql/where (= :departments.id 100))
                  (sql/limit 1)
                  sql/exec))))
     (testing "will compose with order-by clause"
+      ; select users.id as users_id, users.name as users_name, departments.id as departments_id
+      ;        departments.name as departments_name
+      ;  from departments join users on departments.id = users.department_id
+      ;  where departments.id = 100
+      ;  order by users.name desc
+      ;  limit 1
       (is (= [(second table-data)]
              (-> query
                  (sql/where (= :departments.id 100))
@@ -432,4 +485,4 @@
                (sql/cross-join :divisions)
                (sql/fields [:divisions.id :departments.id])
                (sql/order-by [:divisions.id :asc :departments.id :asc])
-               sql/exec)))))
+               sql/exec))))))

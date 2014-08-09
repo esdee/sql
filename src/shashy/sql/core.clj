@@ -69,17 +69,6 @@
          (map (fn [[k v]] {(col->key k v) (from-sql v)})
               sql-map)))
 
-;TODO works this out
-(def ^:private default-transforms (atom [sqlmap->cljmap]))
-
-(defn set-default-transforms!
-  [& transforms]
-  (reset! default-transforms (flatten transforms)))
-
-(defn get-default-transforms
-  []
-  @default-transforms)
-
 ; if no prefixes are supplied, use these instead
 (def default-prefixes (atom nil))
 
@@ -108,7 +97,7 @@
    :distinct? false
    :joins []
    :limit nil
-   :transforms @default-transforms
+   :transforms [sqlmap->cljmap]
    :prefixes []
    :connection connection})
 
@@ -463,7 +452,7 @@
          (map (fn [{transforms :transforms}]
                 (let [results (with-open [^ResultSet rs (.getResultSet stmt)]
                                 (do-transforms (doall (jdbc/result-set-seq rs))
-                                               (or (seq transforms) @default-transforms)))
+                                               transforms))
                       _ (.getMoreResults stmt)]
                   results)))
          (zipmap (map :identifier queries)))))

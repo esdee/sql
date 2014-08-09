@@ -13,7 +13,7 @@
     :subname     "sql_test;DB_CLOSE_DELAY=-1" ; keep in memory as long as jvm is open
     :user        "sa"})
 
-(def query (partial sql/query connection))
+(def query (sql/query connection))
 
 ;;; Database initialization functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn drop-all-tables
@@ -84,7 +84,7 @@
   (let [table-data  [{:id 1 :name "User 1" :department-id 100}
                      {:id 2 :name "User a2" :department-id 100}
                      {:id 3 :name "User 3" :department-id 101}]
-        users-query (query :users)]
+        users-query (sql/table query :users)]
     (testing "all the fields are returned by default if none are specified"
       (is (= "select * from users" (sql/to-query-sql users-query)))
       (is (= table-data (sql/exec users-query))))
@@ -117,24 +117,24 @@
 (deftest testing-exec-and-exec1
   (testing "exec will return a sequence of maps"
     (is (= [{:id 1} {:id 2} {:id 3}]
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:id])
                (sql/order-by [:id])
                sql/exec))))
   (testing "exec may return an empty sequence"
     (is (= []
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/where (= :id 1000))
                sql/exec))))
   (testing "exec1 will return a single map"
     (is (= {:id 1}
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:id])
                (sql/order-by [:id])
                sql/exec1))))
   (testing "exec1 may return a nil"
     (is (= nil
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/where (= :id 1000))
                sql/exec1)))))
 
@@ -142,15 +142,15 @@
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"
     (is (= 2
-           (-> :users query (sql/limit 2) sql/exec count)))
+           (-> (sql/table query :users) (sql/limit 2) sql/exec count)))
     (is (= 1
-           (-> :users query (sql/limit 1) sql/exec count)))))
+           (-> (sql/table query :users) (sql/limit 1) sql/exec count)))))
 
 ;;; Field renaming ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest field-renaming
   (testing "fields are renamed from snake_case to kebab-case by the default transform"
     (is (= [{:department-id 100} {:department-id 100} {:department-id 101}]
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:department_id])
                (sql/exec)))))
   (testing "boolean fields are post-pended with a ?"
@@ -158,19 +158,19 @@
             {:name "John"  :rehire? false}
             {:name "John"  :rehire? false}
             {:name "Jules" :rehire? false}]
-           (-> (query :names)
+           (-> (sql/table query :names)
                (sql/fields [:name :rehire])
                (sql/order-by [:name :asc])
                sql/exec))))
   (testing "the default transform can be switched off"
     (is (= [{:department_id 100} {:department_id 100} {:department_id 101}]
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:department_id])
                sql/no-transforms
                sql/exec))))
   (testing "maps can be transformed according to a supplied transform-fn"
     (is (= [{"Department_id" 100 "Id" 1} {"Department_id" 100 "Id" 2} {"Department_id" 101 "Id" 3}]
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:department_id :id])
                (sql/transform-with
                  (fn [m]
@@ -179,7 +179,7 @@
                sql/exec))))
   (testing "transforms can be chained together"
     (is (= [{"Department_id" 100 "Id" 1} {"Department_id" 100 "Id" 2} {"Department_id" 101 "Id" 3}]
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:department_id :id])
                (sql/transform-with
                  (fn [m]
@@ -188,7 +188,7 @@
                    (zipmap (map str/capitalize (keys m)) (vals m))))
                sql/exec))))
   (testing "transform-with overwrites previous transforms"
-    (let [query0 (-> :users query (sql/fields [:department_id]))]
+    (let [query0 (-> (sql/table query :users) (sql/fields [:department_id]))]
       (is (= [{:department-id 100} {:department-id 100} {:department-id 101}]
              (sql/exec query0)))
       (let [query1 (-> query0
@@ -198,7 +198,7 @@
                (sql/exec query1))))))
   (testing "add-transforms adds to the existing list of transforms"
     (is (= [{"department-id" 100} {"department-id" 100} {"department-id" 101}]
-           (-> (query :users)
+           (-> (sql/table query :users)
                (sql/fields [:department_id])
                (sql/add-transforms
                  (fn [m] (zipmap (map name (keys m)) (vals m))))
@@ -207,7 +207,7 @@
 ;;; Where conditions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest single-where-conditions
   (testing "single conditions"
-    (let [users-query (-> :users query (sql/fields [:id]))]
+    (let [users-query (-> (sql/table query :users) (sql/fields [:id]))]
       (let [users-query* (-> users-query (sql/where (= 1 :id)))]
         (is (= "select id as id from users where (id=?)"
                (sql/to-query-sql users-query*)))
@@ -235,7 +235,7 @@
                (sql/exec users-query*))))))
   (testing "null and not null conditions"
     ; select users.id from users where users.terminated_at is null
-    (let [names-query (-> :names query (sql/fields [:name]))]
+    (let [names-query (-> (sql/table query :names) (sql/fields [:name]))]
       (let [names-query* (-> names-query (sql/where (null? :terminated_at)))]
         (is (= "select name as name from names where (terminated_at is null)"
                (sql/to-query-sql names-query*)))
@@ -252,7 +252,7 @@
                     (map :name)
                     set))))))
   (testing "true and false conditions"
-    (let [names-query (-> :names query (sql/fields [:name]))]
+    (let [names-query (-> (sql/table query :names) (sql/fields [:name]))]
       (let [names-query* (-> names-query (sql/where (true? :rehire)))]
         (is (= "select name as name from names where (rehire=?)" (sql/to-query-sql names-query*)))
         (is (= [true] (:where-parameters names-query*)))
@@ -268,7 +268,7 @@
                     (map :name)
                     set))))))
   (testing "alternate where syntax"
-    (let [users-query (-> :users query (sql/fields [:id]))]
+    (let [users-query (-> (sql/table query :users) (sql/fields [:id]))]
       (let [users-query* (-> users-query (sql/where {:id 1}))]
         (is (= "select id as id from users where ((id=?))" (sql/to-query-sql users-query*)))
         (is (= ['(1)] (:where-parameters users-query*)))
@@ -285,20 +285,20 @@
                         (.setTimeInMillis 1))]
     (testing "database times are converted into utc dates automagically"
       (is (= {:terminated-at expected-date}
-             (-> (query :names)
+             (-> (sql/table query :names)
                  (sql/fields [:terminated_at])
                  (sql/where (not-null? :terminated_at))
                  sql/exec1))))
     (testing "dates can be used as parameters without converting to sql timestamps"
       (is (= {:terminated-at expected-date}
-             (-> (query :names)
+             (-> (sql/table query :names)
                  (sql/fields [:terminated_at])
                  (sql/where {:terminated_at expected-date})
                  sql/exec1))))))
 
 ;;; Testing multiple Where clauses ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest multiple-where-conditions
-  (let [users-query (-> :users query (sql/fields [:id]))]
+  (let [users-query (-> (sql/table query :users) (sql/fields [:id]))]
     (testing "multiple and clauses"
       (let [users-query* (-> users-query
                              (sql/where (and (= :department_id 100)
@@ -326,7 +326,7 @@
 (deftest queries-with-distinct
   (testing "returns distinct fields"
     ; select distinct names.name from names
-    (let [names-query (-> :names query (sql/fields [:name]) sql/distinct)]
+    (let [names-query (-> (sql/table query :names) (sql/fields [:name]) sql/distinct)]
       (is (= "select distinct name as name from names" (sql/to-query-sql names-query)))
       (is (= #{"Jim" "John" "Jules"} (set (map :name (sql/exec names-query))))))))
 
@@ -334,7 +334,7 @@
 (deftest aggregrations
   (testing "will return counts"
     ; select count(id) as id from users limit 1
-    (let [users-query (query :users)]
+    (let [users-query (sql/table query :users)]
       (let [users-query* (-> users-query (sql/fields [(count :id :id)]))]
         (is (= "select count(id) as id from users"
                (sql/to-query-sql users-query*)))
@@ -347,7 +347,7 @@
     ; select departments.id, count(users.id) as emp_count
     ;   from departments join users on departments.id = users.department_id
     ;   group by departments.id
-    (let [query* (-> (query :departments)
+    (let [query* (-> (sql/table query :departments)
                      (sql/left-join :users [[:id :department_id]])
                      (sql/fields [:departments.id (count :users.id :emp_count)])
                      (sql/group-by [:departments.id]))]
@@ -360,7 +360,7 @@
               {:departments-id 102 :emp-count 0}]
              (sql/exec query*)))))
   (testing "will return sums"
-    (let [query* (-> (query :divisions)
+    (let [query* (-> (sql/table query :divisions)
                      (sql/join :departments [[:id :division_id]])
                      (sql/fields [:divisions.id (sum :buildings :sum_b)])
                      (sql/group-by [:divisions.id])
@@ -373,7 +373,7 @@
               {:divisions-id 2000 :sum-b 12}]
              (sql/exec query*)))))
   (testing "will select based on a having clause"
-    (let [query* (-> (query :divisions)
+    (let [query* (-> (sql/table query :divisions)
                      (sql/join :departments [[:id :division_id]])
                      (sql/fields [:divisions.id (sum :departments.buildings)])
                      (sql/group-by [:divisions.id])
@@ -389,9 +389,9 @@
 ;;; Demonstrating the use of joins ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest joins
   (testing "field names will be qualified with table names automatically"
-    (let [query0 (-> (query :departments)
+    (let [query0 (-> (sql/table query :departments)
                     (sql/join :users [[:departments.id :users.department_id]]))
-          query1 (-> (query :departments)
+          query1 (-> (sql/table query :departments)
                     (sql/join :users [[:id :department_id]]))]
       (is (= (sql/to-query-sql query0)
              (sql/to-query-sql query1)))))
@@ -401,7 +401,7 @@
                      :departments-name "Dept 100"}
                     {:users-id 3 :users-name "User 3" :departments-id 101
                      :departments-name "Dept 101"}]
-        query (-> (query :departments)
+        query (-> (sql/table query :departments)
                   (sql/join :users [[:id :department_id]])
                   (sql/fields [:users.id
                                :users.name
@@ -455,7 +455,7 @@
                          {:divisions-id 2000 :departments-id 102}
                          {:divisions-id 9999 :departments-id nil}]]
       (testing "can use left outer join"
-        (let [query* (-> (query :divisions)
+        (let [query* (-> (sql/table query :divisions)
                          (sql/left-join :departments [[:id :division_id]])
                          (sql/fields [:divisions.id :departments.id])
                          (sql/order-by [:divisions.id :asc :departments.id :asc]))]
@@ -467,7 +467,7 @@
           (is (= expected-data
                  (sql/exec query*)))))
       (testing "can use right outer join"
-        (let [query* (-> (query :departments)
+        (let [query* (-> (sql/table query :departments)
                          (sql/right-join :divisions [[:division_id :id]])
                          (sql/fields [:divisions.id :departments.id])
                          (sql/order-by [:divisions.id :asc :departments.id :asc]))]
@@ -479,18 +479,18 @@
           (is (= expected-data
                  (sql/exec query*)))))
       (testing "right and left joins are identical if the table order is transpossed"
-        (is (= (-> (query :divisions)
-                  (sql/left-join :departments [[:id :division_id]])
-                  (sql/fields [:divisions.id :departments.id])
-                  (sql/order-by [:divisions.id :asc :departments.id :asc])
-                  sql/exec)
-               (-> (query :departments)
+        (is (= (-> (sql/table query :divisions)
+                   (sql/left-join :departments [[:id :division_id]])
+                   (sql/fields [:divisions.id :departments.id])
+                   (sql/order-by [:divisions.id :asc :departments.id :asc])
+                   sql/exec)
+               (-> (sql/table query :departments)
                   (sql/right-join :divisions [[:division_id :id]])
                   (sql/fields [:divisions.id :departments.id])
                   (sql/order-by [:divisions.id :asc :departments.id :asc])
                   sql/exec))))))
   (testing "cross joins"
-    (let [query (-> (query :departments)
+    (let [query (-> (sql/table query :departments)
                     (sql/cross-join :divisions)
                     (sql/fields [:divisions.id :departments.id])
                     (sql/order-by [:divisions.id :asc :departments.id :asc]))]

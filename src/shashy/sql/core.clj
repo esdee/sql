@@ -84,22 +84,32 @@
 
 (defn query
   "Initialize a query object"
-  [connection table-name]
-  {:type ::query
-   :table table-name
-   :fields []
-   :where []
-   :having []
-   :where-parameters []
-   :having-parameters []
-   :group-by []
-   :order-by []
-   :distinct? false
-   :joins []
-   :limit nil
-   :transforms [sqlmap->cljmap]
-   :prefixes []
-   :connection connection})
+  ([]
+   {:type ::query
+    :table  nil
+    :fields []
+    :where []
+    :having []
+    :where-parameters []
+    :having-parameters []
+    :group-by []
+    :order-by []
+    :distinct? false
+    :joins []
+    :limit nil
+    :transforms [sqlmap->cljmap]
+    :prefixes []
+    :connection nil})
+  ([connection]
+   (assoc (query) :connection connection)))
+
+(defn connection
+  [query connection]
+  (assoc query :connection connection))
+
+(defn table
+  [query table]
+  (assoc query :table table))
 
 (defn- uquery
   [query key vals]

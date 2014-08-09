@@ -5,7 +5,9 @@
             [clojure.java.jdbc :as jdbc]
             [clojure.java.jdbc.deprecated :as jdbc-deprecated]
             [shashy.date-utilities.core :as dates])
-  (:import [java.sql Connection PreparedStatement ResultSet Timestamp]))
+  (:import [java.sql Connection PreparedStatement ResultSet Timestamp]
+           (java.util Date GregorianCalendar)
+           (org.joda.time DateTime)))
 
 ;; --- To Sql Protocol ---------------------------------------------------------
 (defprotocol I->Sql
@@ -22,13 +24,13 @@
   (->sql [_] nil)
 
   ; date types are another exception
-  java.util.Date
+  Date
   (->sql [dt] (dates/->sql-timestamp dt))
 
-  java.util.GregorianCalendar
+  GregorianCalendar
   (->sql [calendar] (dates/->sql-timestamp calendar))
 
-  org.joda.time.DateTime
+  DateTime
   (->sql [dt] (dates/->sql-timestamp dt)))
 
 ;; Default transforms -----------------------------------------------------------
@@ -47,7 +49,7 @@
   ; sql Dates are the exceptions
   java.sql.Date
   (from-sql [sql-date] (dates/->utc sql-date))
-  java.sql.Timestamp
+  Timestamp
   (from-sql [sql-timestamp] (dates/->utc sql-timestamp)))
 
 ; --- Retrieval Functions ------------------------------------------------------

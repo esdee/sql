@@ -444,8 +444,11 @@
      (insert-prefixes (or prefixes @default-prefixes) sql))))
 
 (defn to-query-sql
-  [query conn]
-  (str/trim (to-query-sql* query conn)))
+  [{connection :connection :as query}]
+  (-> (to-query-sql* query connection)
+      (str/replace #"\s+" " ")
+      str/trim))
+
 (defn do-transforms
   [results transforms]
   (if (seq transforms)

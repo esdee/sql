@@ -84,34 +84,34 @@
   (let [table-data  [{:id 1 :name "User 1" :department-id 100}
                      {:id 2 :name "User a2" :department-id 100}
                      {:id 3 :name "User 3" :department-id 101}]
-        query (query :users)]
+        users-query (query :users)]
     (testing "all the fields are returned by default if none are specified"
-      ; select * from users
-      (is (= table-data (sql/exec query))))
+      (is (= "select * from users" (sql/to-query-sql users-query)))
+      (is (= table-data (sql/exec users-query))))
     (testing "only the fields specified are returned when fields are specified"
-      ; select users.name from users
-      (is (= (map (fn [m] (select-keys m [:name])) table-data)
-             (-> query
-                 (sql/fields [:name])
-                 sql/exec))))
+      (let [users-query* (sql/fields users-query [:name])]
+        (is (= "select name as name from users"
+               (sql/to-query-sql users-query*)))
+        (is (= (map (fn [m] (select-keys m [:name])) table-data)
+               (sql/exec users-query*)))))
     (testing "fields can be renamed using the keyword syntax"
-      ; select users.name as user_name from users
-      (is (= (map (fn [m] {:user-name (:name m)}) table-data)
-             (-> query
-                 (sql/fields [[:name :user_name]])
-                 sql/exec))))
+      (let [users-query* (sql/fields users-query [[:name :user_name]])]
+        (is (= "select name as user_name from users")
+            (sql/to-query-sql users-query*))
+        (is (= (map (fn [m] {:user-name (:name m)}) table-data)
+               (sql/exec users-query*)))))
     (testing "fields can be renamed using the string syntax"
-      ; select users.name as user_name from users
-      (is (= (map (fn [m] {:user-name (:name m)}) table-data)
-             (-> query
-                 (sql/fields ["name as user_name"])
-                 sql/exec))))
+      (let [users-query* (sql/fields users-query ["name as user_name"])]
+        (is (= "select name as user_name from users"
+               (sql/to-query-sql users-query*)))
+        (is (= (map (fn [m] {:user-name (:name m)}) table-data)
+               (sql/exec users-query*)))))
     (testing "database functions can be invoked on fields using the string syntax"
-      ; select left(users.name, 3) as short_name from users
-      (is (= (repeat 3 {:short-name "Use"})
-             (-> query
-                 (sql/fields ["left(name, 3) as short_name"])
-                 sql/exec))))))
+      (let [users-query* (sql/fields users-query ["left(name, 3) as short_name"])]
+        (is (= "select left(name, 3) as short_name from users"
+               (sql/to-query-sql users-query*)))
+        (is (= (repeat 3 {:short-name "Use"})
+               (sql/exec users-query*)))))))
 
 ;;; Exec 1 versus exec ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-exec-and-exec1
@@ -127,7 +127,7 @@
                (sql/where (= :id 1000))
                sql/exec))))
   (testing "exec1 will return a single map"
-    (is (= {:id 1} 
+    (is (= {:id 1}
            (-> (query :users)
                (sql/fields [:id])
                (sql/order-by [:id])
@@ -141,10 +141,8 @@
 ;;; Demonstrating Limits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest testing-limiting-rows
   (testing "limit limits the number of rows returned by a query"
-    ; select * from users limit 2
     (is (= 2
            (-> :users query (sql/limit 2) sql/exec count)))
-    ; select * from users limit 1
     (is (= 1
            (-> :users query (sql/limit 1) sql/exec count)))))
 
@@ -209,71 +207,76 @@
 ;;; Where conditions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest single-where-conditions
   (testing "single conditions"
-    (let [users (-> :users query (sql/fields [:id]))]
-      ; select users.id from users where users.id=1
-      (is (= [{:id 1}]
-             (-> users
-                 (sql/where (= 1 :id))
-                 sql/exec)))
-      ; select users.id from users where users.id>1
-      (is (= [{:id 2} {:id 3}]
-             (-> users
-                 (sql/where (> :id 1))
-                 sql/exec)))
-      (is (= [{:id 3}]
-             (-> users
-                 (sql/where (= :id (inc 2)))
-                 sql/exec)))
-      ; select users.id from users where users.id in(1, 2, 3)
-      (is (= [{:id 1} {:id 2} {:id 3}]
-             (-> users
-                 (sql/where (in :id (range 1 4)))
-                 sql/exec)))))
+    (let [users-query (-> :users query (sql/fields [:id]))]
+      (let [users-query* (-> users-query (sql/where (= 1 :id)))]
+        (is (= "select id as id from users where (id=?)"
+               (sql/to-query-sql users-query*)))
+        (is (= [1] (:where-parameters users-query*)))
+        (is (= [{:id 1}]
+               (sql/exec users-query*))))
+      (let [users-query* (-> users-query (sql/where (> :id 1)))]
+        (is (= "select id as id from users where (id>?)"
+               (sql/to-query-sql users-query*)))
+        (is (= [1] (:where-parameters users-query*)))
+        (is (= [{:id 2} {:id 3}]
+               (sql/exec users-query*))))
+      ; You can use the results of fns as parameters in where clauses
+      (let [users-query* (-> users-query (sql/where (= :id (inc 2))))]
+        (is (= "select id as id from users where (id=?)"))
+        (is (= [3] (:where-parameters users-query*)))
+        (is (= [{:id 3}]
+               (sql/exec users-query*))))
+      ; You can use clojure seqs for in conditions in where clauses
+      (let [users-query* (-> users-query (sql/where (in :id (range 1 4))))]
+        (is (= "select id as id from users where (id in(?,?,?))"
+               (sql/to-query-sql users-query*)))
+        (is (= ['(1 2 3)] (:where-parameters users-query*)))
+        (is (= [{:id 1} {:id 2} {:id 3}]
+               (sql/exec users-query*))))))
   (testing "null and not null conditions"
     ; select users.id from users where users.terminated_at is null
-    (let [names (-> :names query (sql/fields [:name]))]
-      (is (= #{"John" "Jules"}
-             (set
-               (map :name
-                    (-> names
-                        (sql/where (null? :terminated_at))
-                        sql/exec)))))
+    (let [names-query (-> :names query (sql/fields [:name]))]
+      (let [names-query* (-> names-query (sql/where (null? :terminated_at)))]
+        (is (= "select name as name from names where (terminated_at is null)"
+               (sql/to-query-sql names-query*)))
+        (is (= #{"John" "Jules"}
+               (->> (sql/exec names-query*)
+                    (map :name)
+                    set))))
       ; select users.id from users where users.terminated_at is not null
-      (is (= #{"Jim"}
-             (set
-               (map :name
-                    (-> names
-                        (sql/where (not-null? :terminated_at))
-                        sql/exec)))))))
+      (let [names-query* (-> names-query (sql/where (not-null? :terminated_at)))]
+        (is (= "select name as name from names where (terminated_at is not null)"
+               (sql/to-query-sql names-query*)))
+        (is (= #{"Jim"}
+               (->> (sql/exec names-query*)
+                    (map :name)
+                    set))))))
   (testing "true and false conditions"
-    ; select users.id from users where users.rehire = true
-    (let [names (-> :names query (sql/fields [:name]))]
-      (is (= #{"Jim"}
-             (set
-               (map :name
-                    (-> names
-                        (sql/where (true? :rehire))
-                        sql/exec)))))
-      ; select users.id from users where users.rehire = false
-      (let [names (-> :names query (sql/fields [:name]))]
-      (is (= #{"John" "Jules"}
-                   (set
-                     (map :name
-                          (-> names
-                              (sql/where (false? :rehire))
-                              sql/exec))))))
+    (let [names-query (-> :names query (sql/fields [:name]))]
+      (let [names-query* (-> names-query (sql/where (true? :rehire)))]
+        (is (= "select name as name from names where (rehire=?)" (sql/to-query-sql names-query*)))
+        (is (= [true] (:where-parameters names-query*)))
+        (is (= #{"Jim"}
+               (->> (sql/exec names-query*)
+                    (map :name)
+                    set))))
+      (let [names-query* (-> names-query (sql/where (false? :rehire)))]
+        (is (= "select name as name from names where (rehire=?)" (sql/to-query-sql names-query*)))
+        (is (= [false] (:where-parameters names-query*)))
+        (is (= #{"John" "Jules"}
+               (->> (sql/exec names-query*)
+                    (map :name)
+                    set))))))
   (testing "alternate where syntax"
-    (let [users (-> :users query (sql/fields [:id]))]
-      ; select users.id from users where users.id = 1
-      (is (= [{:id 1}]
-             (-> users
-                 (sql/where {:id 1})
-                 sql/exec)))
-      ; select users.id where users.department_id = 101
-      (is (= [{:id 3}]
-             (-> users
-                 (sql/where {:department_id 101})
-                 sql/exec)))))))
+    (let [users-query (-> :users query (sql/fields [:id]))]
+      (let [users-query* (-> users-query (sql/where {:id 1}))]
+        (is (= "select id as id from users where ((id=?))" (sql/to-query-sql users-query*)))
+        (is (= ['(1)] (:where-parameters users-query*)))
+        (is (= [{:id 1}] (sql/exec users-query*))))
+      (let [users-query* (-> users-query (sql/where {:department_id (inc 100)}))]
+        (is (= "select id as id from users where ((department_id=?))" (sql/to-query-sql users-query*)))
+        (is (= ['(101)] (:where-parameters users-query*)))
+        (is (= [{:id 3}] (sql/exec users-query*))))))
 
 ;;; Date Time translation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest handling-times
@@ -295,93 +298,93 @@
 
 ;;; Testing multiple Where clauses ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest multiple-where-conditions
-  (let [users (-> :users query (sql/fields [:id]))]
+  (let [users-query (-> :users query (sql/fields [:id]))]
     (testing "multiple and clauses"
-      ; select users.id where (users.department_id = 100 and users.id > 1)
-      (is (= [{:id 2}]
-             (-> users
-                 (sql/where
-                   (and (= :department_id 100)
-                        (> :id 1)))
-                 sql/exec))))
+      (let [users-query* (-> users-query
+                             (sql/where (and (= :department_id 100)
+                                             (> :id 1))))]
+        (is (= "select id as id from users where ((department_id=? and id>?))" (sql/to-query-sql users-query*)))
+        (is (= ['(100 1)] (:where-parameters users-query*)))
+        (is (= [{:id 2}] (sql/exec users-query*)))))
     (testing "multiple or clauses"
-      ; select users.id where (users.department_id = 101 or id in(1, 2))
-      (is (= [{:id 1} {:id 2} {:id 3}]
-             (-> users
-                 (sql/where
-                   (or (= :department_id 101)
-                       (in :id (range 1 3))))
-                 sql/exec))))
+      (let [users-query* (-> users-query
+                             (sql/where (or (= :department_id 101)
+                                            (in :id (range 1 3)))))]
+        (is (= "select id as id from users where ((department_id=? or id in(?,?)))"
+               (sql/to-query-sql users-query*)))
+        (is (= ['(101 (1 2))] (:where-parameters users-query*)))
+        (is (= [{:id 1} {:id 2} {:id 3}]
+               (sql/exec users-query*)))))
     (testing "alternate syntax for multiple and clauses"
-      ; select users.id where (users.id = 2 and department_id = 100)
-      (is (= [{:id 2}]
-             (-> users
-                 (sql/where {:id 2
-                             :department_id 100})
-                 sql/exec))))))
+      (let [users-query* (-> users-query
+                             (sql/where {:id 2 :department_id 100}))]
+        (is (= "select id as id from users where ((department_id=? and id=?))" (sql/to-query-sql users-query*)))
+        (is (= ['(100 2)] (:where-parameters users-query*)))
+        (is (= [{:id 2}] (sql/exec users-query*)))))))
 
 ;;; Testing Distinct ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest queries-with-distinct
   (testing "returns distinct fields"
     ; select distinct names.name from names
-    (let [rows (-> :names query (sql/fields [:name]) sql/distinct sql/exec)]
-      (is (= #{"Jim" "John" "Jules"} (set (map :name rows)))))))
+    (let [names-query (-> :names query (sql/fields [:name]) sql/distinct)]
+      (is (= "select distinct name as name from names" (sql/to-query-sql names-query)))
+      (is (= #{"Jim" "John" "Jules"} (set (map :name (sql/exec names-query))))))))
 
 ;;; Demonstrating the use of aggregation functions e.g. sum, count, max, min ;;;
 (deftest aggregrations
   (testing "will return counts"
     ; select count(id) as id from users limit 1
-    (is (= {:id 3}
-           (-> (query :users)
-               (sql/fields [(count :id :id)])
-               sql/exec1)))
-    ; select count(id) as count_id from users limit 1
-    (is (= {:count-id 3} ; default naming is aggregatefn-field
-           (-> (query :users)
-               (sql/fields [(count :id)])
-               sql/exec1)))
-    ; select count(id) as users from users limit 1
-    (is (= {:users 3}
-           (-> (query :users)
-               (sql/fields [(count :id :users)])
-               sql/exec1))))
+    (let [users-query (query :users)]
+      (let [users-query* (-> users-query (sql/fields [(count :id :id)]))]
+        (is (= "select count(id) as id from users"
+               (sql/to-query-sql users-query*)))
+        (is (= {:id 3} (sql/exec1 users-query*))))
+      (let [users-query* (-> users-query (sql/fields [(count :id)]))]
+        ; default naming is aggregatefn-field
+        (is (= "select count(id) as count_id from users" (sql/to-query-sql users-query*)))
+        (is (= {:count-id 3} (sql/exec1 users-query*))))))
   (testing "will return grouped counts"
     ; select departments.id, count(users.id) as emp_count
     ;   from departments join users on departments.id = users.department_id
     ;   group by departments.id
-    (is (= [{:departments-id 100 :emp-count 2}
-            {:departments-id 101 :emp-count 1}
-            {:departments-id 102 :emp-count 0}]
-           (-> (query :departments)
-               (sql/left-join :users [[:id :department_id]])
-               (sql/fields [:departments.id (count :users.id :emp_count)])
-               (sql/group-by [:departments.id])
-               sql/exec))))
+    (let [query* (-> (query :departments)
+                     (sql/left-join :users [[:id :department_id]])
+                     (sql/fields [:departments.id (count :users.id :emp_count)])
+                     (sql/group-by [:departments.id]))]
+      (is (= (str "select departments.id as departments_id,"
+                  "count(users.id) as emp_count from departments "
+                  "left join users on departments.id=users.department_id group by departments.id")
+             (sql/to-query-sql query*)))
+      (is (= [{:departments-id 100 :emp-count 2}
+              {:departments-id 101 :emp-count 1}
+              {:departments-id 102 :emp-count 0}]
+             (sql/exec query*)))))
   (testing "will return sums"
-    ; select divisions.id, sum(buildings) as sum_b
-    ;  from divisions join departments on divisions.id = departments.division_id
-    ;  group by divisions.id
-    ;  order by sum_b
-    (is (= [{:divisions-id 1000 :sum-b 2}
-            {:divisions-id 2000 :sum-b 12}]
-           (-> (query :divisions)
-               (sql/join :departments [[:id :division_id]])
-               (sql/fields [:divisions.id (sum :buildings :sum_b)])
-               (sql/group-by [:divisions.id])
-               (sql/order-by [:sum_b])
-               sql/exec))))
+    (let [query* (-> (query :divisions)
+                     (sql/join :departments [[:id :division_id]])
+                     (sql/fields [:divisions.id (sum :buildings :sum_b)])
+                     (sql/group-by [:divisions.id])
+                     (sql/order-by [:sum_b]))]
+      (is (= (str "select divisions.id as divisions_id,sum(buildings) as sum_b "
+                  "from divisions join departments on divisions.id=departments.division_id "
+                  "group by divisions.id order by sum_b")
+             (sql/to-query-sql query*)))
+      (is (= [{:divisions-id 1000 :sum-b 2}
+              {:divisions-id 2000 :sum-b 12}]
+             (sql/exec query*)))))
   (testing "will select based on a having clause"
-    ; select divisions.id, sum(departments.buildings) as sum_departments_buildings
-    ;  from divisions join departments on divisions.id = departments.division_id
-    ;  having (sum(buildings) > 8))
-    ;  group by divisions.id
-    (is (= [{:divisions-id 2000 :sum-departments-buildings 12}]
-           (-> (query :divisions)
-               (sql/join :departments [[:id :division_id]])
-               (sql/fields [:divisions.id (sum :departments.buildings)])
-               (sql/group-by [:divisions.id])
-               (sql/having (> (sum :buildings) 8))
-               sql/exec)))))
+    (let [query* (-> (query :divisions)
+                     (sql/join :departments [[:id :division_id]])
+                     (sql/fields [:divisions.id (sum :departments.buildings)])
+                     (sql/group-by [:divisions.id])
+                     (sql/having (> (sum :buildings) 8)))]
+      (is (= (str "select divisions.id as divisions_id,sum(departments.buildings) as sum_departments_buildings "
+                 "from divisions join departments on divisions.id=departments.division_id "
+                 "group by divisions.id having (sum(buildings)>?)")
+             (sql/to-query-sql query*)))
+      (is (= [8] (:having-parameters query*)))
+      (is (= [{:divisions-id 2000 :sum-departments-buildings 12}]
+             (sql/exec query*)))))))
 
 ;;; Demonstrating the use of joins ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (deftest joins
@@ -405,18 +408,23 @@
                                :departments.id
                                :departments.name]))]
     (testing "will return all records where satisfying the join"
-      ; select users.id as users_id, users.name as users_name, departments.id as departments_id
-      ;        departments.name as departments_name
-      ;  from departments join users on departments.id = users.department_id
+      (is (= (str "select users.id as users_id,users.name as users_name,"
+                  "departments.id as departments_id,departments.name as departments_name "
+                  "from departments join users on departments.id=users.department_id")
+             (sql/to-query-sql query)))
       (is (= table-data
              (sql/exec query))))
     (testing "will compose with where clauses"
-      ; select users.id as users_id, users.name as users_name, departments.id as departments_id
-      ;        departments.name as departments_name
-      ;  from departments join users on departments.id = users.department_id
-      ;  where departments.id = 100
-      (is (= (drop-last table-data)
-             (-> query (sql/where (= :departments.id 100)) sql/exec))))
+      (let [query* (-> query
+                       (sql/where (= :departments.id 100)))]
+        (is (= (str "select users.id as users_id,users.name as users_name,"
+                  "departments.id as departments_id,departments.name as departments_name "
+                  "from departments join users on departments.id=users.department_id "
+                  "where (departments.id=?)")
+               (sql/to-query-sql query*)))
+        (is (= [100] (:where-parameters query*)))
+        (is (= (drop-last table-data)
+               (sql/exec query*)))))
     (testing "will compose with limit clauses"
       ; select users.id as users_id, users.name as users_name, departments.id as departments_id
       ;        departments.name as departments_name
@@ -447,19 +455,29 @@
                          {:divisions-id 2000 :departments-id 102}
                          {:divisions-id 9999 :departments-id nil}]]
       (testing "can use left outer join"
-        (is (= expected-data
-              (-> (query :divisions)
-                  (sql/left-join :departments [[:id :division_id]])
-                  (sql/fields [:divisions.id :departments.id])
-                  (sql/order-by [:divisions.id :asc :departments.id :asc])
-                  sql/exec))))
+        (let [query* (-> (query :divisions)
+                         (sql/left-join :departments [[:id :division_id]])
+                         (sql/fields [:divisions.id :departments.id])
+                         (sql/order-by [:divisions.id :asc :departments.id :asc]))]
+          (is (= (str "select divisions.id as divisions_id,departments.id as departments_id "
+                      "from divisions left join departments on "
+                      "divisions.id=departments.division_id "
+                      "order by divisions.id asc,departments.id asc")
+                 (sql/to-query-sql query*)))
+          (is (= expected-data
+                 (sql/exec query*)))))
       (testing "can use right outer join"
-        (is (= expected-data
-              (-> (query :departments)
-                  (sql/right-join :divisions [[:division_id :id]])
-                  (sql/fields [:divisions.id :departments.id])
-                  (sql/order-by [:divisions.id :asc :departments.id :asc])
-                  sql/exec))))
+        (let [query* (-> (query :departments)
+                         (sql/right-join :divisions [[:division_id :id]])
+                         (sql/fields [:divisions.id :departments.id])
+                         (sql/order-by [:divisions.id :asc :departments.id :asc]))]
+          (is (= (str "select divisions.id as divisions_id,departments.id as departments_id "
+                      "from departments right join divisions on "
+                      "departments.division_id=divisions.id "
+                      "order by divisions.id asc,departments.id asc")
+                 (sql/to-query-sql query*)))
+          (is (= expected-data
+                 (sql/exec query*)))))
       (testing "right and left joins are identical if the table order is transpossed"
         (is (= (-> (query :divisions)
                   (sql/left-join :departments [[:id :division_id]])
@@ -472,17 +490,22 @@
                   (sql/order-by [:divisions.id :asc :departments.id :asc])
                   sql/exec))))))
   (testing "cross joins"
-    (is (= [{:divisions-id 1000 :departments-id 100}
-            {:divisions-id 1000 :departments-id 101}
-            {:divisions-id 1000 :departments-id 102}
-            {:divisions-id 2000 :departments-id 100}
-            {:divisions-id 2000 :departments-id 101}
-            {:divisions-id 2000 :departments-id 102}
-            {:divisions-id 9999 :departments-id 100}
-            {:divisions-id 9999 :departments-id 101}
-            {:divisions-id 9999 :departments-id 102}]
-           (-> (query :departments)
-               (sql/cross-join :divisions)
-               (sql/fields [:divisions.id :departments.id])
-               (sql/order-by [:divisions.id :asc :departments.id :asc])
-               sql/exec))))))
+    (let [query (-> (query :departments)
+                    (sql/cross-join :divisions)
+                    (sql/fields [:divisions.id :departments.id])
+                    (sql/order-by [:divisions.id :asc :departments.id :asc]))]
+      (is (= (str "select divisions.id as divisions_id,departments.id as departments_id "
+                  "from departments cross join divisions "
+                  "order by divisions.id asc,departments.id asc")
+             (sql/to-query-sql query)))
+      (is (= [{:divisions-id 1000 :departments-id 100}
+              {:divisions-id 1000 :departments-id 101}
+              {:divisions-id 1000 :departments-id 102}
+              {:divisions-id 2000 :departments-id 100}
+              {:divisions-id 2000 :departments-id 101}
+              {:divisions-id 2000 :departments-id 102}
+              {:divisions-id 9999 :departments-id 100}
+              {:divisions-id 9999 :departments-id 101}
+              {:divisions-id 9999 :departments-id 102}]
+             (sql/exec query))))))
+

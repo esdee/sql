@@ -107,6 +107,7 @@
    (assoc (query) :connection connection)))
 
 (defn connection
+  "Add a connection to a query to be used in executing the query"
   [query connection]
   (assoc query :connection connection))
 
@@ -117,11 +118,6 @@
 (defn- uquery
   [query key vals]
   (update-in query [key] concat (flatten (list vals))))
-
-(defn connection
-  "Add a connection to a query to be used in executing the query"
-  [q c]
-  (assoc q :connection c))
 
 (defn limit
   "Impose a limit on the number of rows returned by a query"

@@ -170,8 +170,8 @@
                                         ; (sql/fields [:id (left :name 3)])
 
 (defmacro fields
-  [query field-names]
   "Assoc a field name or seq of field names to a query"
+  [query field-names]
   `(->> '~field-names
           (map (fn [field#]
                  (condp = (class field#)

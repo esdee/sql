@@ -5,7 +5,8 @@
             [clojure.java.jdbc :as jdbc]
             [clojure.java.jdbc.deprecated :as jdbc-deprecated]
             [shashy.date-utilities.core :as dates])
-  (:import [java.sql Connection PreparedStatement ResultSet Timestamp]
+  (:import (java.sql Connection PreparedStatement ResultSet Timestamp)
+           (com.zaxxer.hikari HikariDataSource)
            (java.util Date GregorianCalendar)
            (org.joda.time DateTime)))
 
@@ -149,7 +150,7 @@
   (let [count-vals (count (seq rest-values))
         simple-as (partial format "%s(%s) as %s" field-fn field-name)]
     (cond
-     (= 0 count-vals) (simple-as (str field-fn "_" (->column-name field-name)))
+     (zero? count-vals) (simple-as (str field-fn "_" (->column-name field-name)))
      (= 1 count-vals) (simple-as (->column-name (name (last rest-values))))
      :else (format "%s(%s) as %s"
                    field-fn
@@ -651,3 +652,6 @@
                           flatten
                           (apply hash-map))]
     (clojure.walk/postwalk-replace replacements m)))
+
+
+;;; Testing ----------------------------------------------------------------------------

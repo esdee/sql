@@ -320,10 +320,10 @@
                    2 (Integer/parseInt %)
                    0 0
                    1 (Integer/parseInt (str (.trim %) "0")))
-          ->minutes #(+ (* 60 (->int (apply str (take 2 %))))
-                        (->int (apply str (drop 2 %))))
+          ->minutes #(+ (* 60 (->int (str/join (take 2 %))))
+                        (->int (str/join (drop 2 %))))
           ->time #(add date :minutes (->minutes (str %)))]
-      (if (> (count (.trim (str s))) 0)
+      (if (seq (str/trim (str s)))
         (let [starting-at (->time s)
               e1 (->time e)
               ending-at (if (after? starting-at e1)

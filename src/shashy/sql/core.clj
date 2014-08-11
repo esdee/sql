@@ -175,7 +175,7 @@
   `(->> '~field-names
           (map (fn [field#]
                  (condp = (class field#)
-                   Keyword (->column-name-as field#)
+                   clojure.lang.Keyword (->column-name-as field#)
                    String field#
                    (parse-field-seq (first field#)
                                     (second field#)

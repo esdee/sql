@@ -222,7 +222,8 @@
                (sql/exec users-query*))))
       ; You can use the results of fns as parameters in where clauses
       (let [users-query* (-> users-query (sql/where (= :id (inc 2))))]
-        (is (= "select id as id from users where (id=?)"))
+        (is (= "select id as id from users where (id=?)"
+               (sql/to-query-sql users-query*)))
         (is (= [3] (:where-parameters users-query*)))
         (is (= [{:id 3}]
                (sql/exec users-query*))))

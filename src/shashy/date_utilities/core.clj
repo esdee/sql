@@ -118,8 +118,9 @@
   [date-able]
   (java.sql.Timestamp. (.getTimeInMillis (localize date-able))))
 
-(defn local-now []
+(defn local-now
   "The localized current time"
+  []
   (java.util.GregorianCalendar.))
 
 (defn past?

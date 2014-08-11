@@ -96,8 +96,8 @@
                (sql/exec users-query*)))))
     (testing "fields can be renamed using the keyword syntax"
       (let [users-query* (sql/fields users-query [[:name :user_name]])]
-        (is (= "select name as user_name from users")
-            (sql/to-query-sql users-query*))
+        (is (= "select name as user_name from users"
+               (sql/to-query-sql users-query*)))
         (is (= (map (fn [m] {:user-name (:name m)}) table-data)
                (sql/exec users-query*)))))
     (testing "fields can be renamed using the string syntax"
